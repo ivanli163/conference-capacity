@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大会运力动态测算</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;margin:0;padding:20px;background:#f7f7f9;color:#222}
+h1{font-size:20px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:#fff;border:1px solid #e6e6eb;border-radius:10px;padding:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+label{display:block;margin:6px 0 4px;font-size:13px;color:#444}
+input[type="number"],input[type="text"],select{width:100%;box-sizing:border-box;padding:8px;border:1px solid #d0d0d6;border-radius:8px;font-size:14px}
+input[type="file"]{width:100%}
+button{padding:10px 14px;border:1px solid #2f6feb;background:#2f6feb;color:#fff;border-radius:8px;font-size:14px;cursor:pointer}
+button.secondary{background:#fff;color:#2f6feb}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th,.table td{border-bottom:1px solid #eee;padding:8px;text-align:center}
+.table th{background:#fafafa}
+.badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#eef6ff;color:#1b61d1;border:1px solid #d6e8ff;font-size:12px}
+.warn{background:#fff4e6;color:#8a4b00;border-color:#ffe2bf}
+.ok{background:#e8fbef;color:#0a7b36;border-color:#c9f1d8}
+.row{display:flex;gap:8px;align-items:center}
+.row input{flex:1}
+.footer{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap}
+.chart-wrap{height:280px;position:relative}
+canvas{width:100%;height:100%}
+.tip{position:absolute;background:#111;color:#fff;border-radius:6px;padding:6px 8px;font-size:12px;display:none;white-space:nowrap}
+.muted{color:#666;font-size:12px}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0}
+.kpi .item{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;text-align:center}
+.item .v{font-size:18px;font-weight:600}
+.item .t{font-size:12px;color:#666}
+.tiny{font-size:12px}
+</style>
+</head>
+<body>
+<h1>大会运力动态测算（12条线路）</h1>
+<div class="card" style="margin-bottom:16px">
+  <h2>操作引导</h2>
+  <div class="muted tiny">最快三步：填写人数 → 点击计算 → 看结果</div>
+  <div class="muted" style="margin-top:6px">酒店数：<span id="statHotels">0</span>；基数总人数：<span id="statBase">0</span></div>
+</div>
+<div class="card" style="margin-bottom:16px">
+  <h2>酒店人数录入（简洁）</h2>
+  <div class="footer">
+    <button id="computeSimple">计算</button>
+    <button id="clearHotelPeople" class="secondary">清空人数</button>
+    <button id="toggleAdvanced" class="secondary">显示高级设置</button>
+    <button id="toggleMapping" class="secondary">编辑线路映射</button>
+    <button id="fillSampleData" class="secondary">填充示例数据</button>
+    <button id="saveMapping" class="secondary">保存映射</button>
+    <button id="exportMapping" class="secondary">导出映射CSV</button>
+    <button id="addHotel" class="secondary">新增酒店</button>
+    <button id="dedupHotels" class="secondary">去重酒店</button>
+    <input type="text" id="newLineName" placeholder="新线路名称（可选）" style="max-width:200px">
+    <button id="addLine" class="secondary">新增线路</button>
+    <button id="runTests" class="secondary">运行自检</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <input type="file" id="fileHotel" accept=".csv,.txt" title="导入酒店与人数">
+    <input type="file" id="fileLine" accept=".csv,.txt" title="导入酒店到线路名称映射">
+    <input type="file" id="fileLineDef" accept=".csv,.txt" title="导入线路编号/名称/酒店列表">
+    <button id="mergeImport">合并导入</button>
+    <button id="importLineDefs">导入线路定义</button>
+  </div>
+  <div style="overflow:auto;margin-top:8px">
+    <table class="table" id="hotelsTable">
+      <thead>
+        <tr>
+          <th>酒店</th>
+          <th>线路名称</th>
+          <th>人数(H列)</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+<div class="grid" id="advancedConfig" style="display:none">
+  <div class="card">
+    <h2>数据输入</h2>
+    <div class="row">
+      <input type="file" id="fileInput" accept=".csv,.txt">
+      <button class="secondary" id="downloadTemplate">下载CSV模板</button>
+    </div>
+    <div style="margin-top:8px">
+      <label>或粘贴CSV（列：酒店名, 线路编号, 人数）</label>
+      <textarea id="pasteArea" rows="6" style="width:100%;padding:8px;border:1px solid #d0d0d6;border-radius:8px" placeholder="酒店A,1,120\n酒店B,1,60\n酒店C,2,90"></textarea>
+    </div>
+    <div style="margin-top:8px">
+      <label>全局增减（%）</label>
+      <input type="range" id="delta" min="-50" max="50" value="0">
+      <div class="muted">当前调整：<span id="deltaLabel">0%</span></div>
+    </div>
+      <div class="footer">
+        <button id="parseBtn">读取数据</button>
+      <button id="resetBtn" class="secondary">重置</button>
+      <button id="resetAdj" class="secondary">重置增减</button>
+      </div>
+  </div>
+  <div class="card">
+    <h2>统一参数（可被分线路覆盖）</h2>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr)">
+      <div>
+        <label>座位数</label>
+        <input type="number" id="pSeats" value="45" min="1">
+      </div>
+      <div>
+        <label>目标上座率</label>
+        <input type="number" id="pLoad" value="0.85" step="0.01" min="0" max="1">
+      </div>
+      <div>
+        <label>安全冗余比例</label>
+        <input type="number" id="pRedund" value="0.10" step="0.01" min="0" max="1">
+      </div>
+      <div>
+        <label>单程车程(分钟)</label>
+        <input type="number" id="pOneWay" value="30" min="1">
+      </div>
+      <div>
+        <label>停靠缓冲(分钟)</label>
+        <input type="number" id="pBuffer" value="10" min="0">
+      </div>
+      <div>
+        <label>时间窗(分钟)</label>
+        <input type="number" id="pWindow" value="120" min="1">
+      </div>
+    </div>
+    <div class="footer">
+      <button id="fillDefaults">填充到分线路</button>
+      <button id="calcBtn">重新计算</button>
+    </div>
+    <div class="muted tiny">说明：每趟有效承载=座位数×上座率；周转=单程×2+缓冲；每车趟次=时间窗/周转（取整）。</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2 style="display:none">分线路参数与需求</h2>
+  <div style="overflow:auto;display:none">
+    <table class="table" id="linesTable">
+      <thead>
+        <tr>
+          <th>线路</th>
+          <th>人数</th>
+          <th>今日增减(人)</th>
+          <th>座位数</th>
+          <th>上座率</th>
+          <th>冗余</th>
+          <th>单程</th>
+          <th>缓冲</th>
+          <th>时间窗</th>
+          <th>每趟承载</th>
+          <th>周转</th>
+          <th>每车趟次</th>
+          <th>需求含冗余</th>
+          <th>需车辆数</th>
+          <th>需总趟次</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="kpi">
+    <div class="item"><div class="v" id="totalPeople">0</div><div class="t">总人数</div></div>
+    <div class="item"><div class="v" id="totalRedund">0</div><div class="t">总需求(含冗余)</div></div>
+    <div class="item"><div class="v" id="totalVehicles">0</div><div class="t">最少车辆数</div></div>
+    <div class="item"><div class="v" id="totalTrips">0</div><div class="t">总趟次</div></div>
+  </div>
+  <div class="footer">
+    <button id="downloadCSV">下载结果CSV</button>
+    <button id="exportPDF">导出PDF报告</button>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>可视化</h2>
+  <div class="chart-wrap">
+    <canvas id="chart"></canvas>
+    <div id="chartTip" class="tip"></div>
+  </div>
+</div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>结果（简洁）</h2>
+    <div style="overflow:auto">
+      <table class="table" id="simpleResult">
+      <thead>
+        <tr>
+          <th>线路名称</th>
+          <th>人数</th>
+          <th>运行时间(分)</th>
+          <th>需车辆数</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px" id="testReportWrap" hidden>
+    <h2>测试报告</h2>
+    <div class="muted tiny" id="testSummary"></div>
+    <div style="overflow:auto;margin-top:8px">
+      <table class="table" id="testReport">
+        <thead>
+          <tr><th>用例</th><th>结果</th><th>详情</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const state={lines:[],peopleByLine:{},defaults:{seats:45,load:0.85,red:0.1,oneWay:30,buffer:10,window:120},delta:0,stats:{hotels:0,baseTotal:0},hotels:[],hotelLineMap:{},lineNameToId:{},editMapping:false,lastSummary:null,chartSel:-1};
+function initLines(n=12){state.lines=[];for(let i=1;i<=n;i++){state.lines.push({id:String(i),name:'线路'+i,people:0,adj:0,seats:45,load:0.85,red:0.1,oneWay:30,buffer:10,window:120,runTime:0,calc:{}})}}
+function initHotels(count=24){state.hotels=[];for(let i=1;i<=count;i++){state.hotels.push({name:'酒店'+i,line:String((i-1)%12+1),people:0})}}
+function loadPresetHotels(){const raw=[
+{name:'江门保利皇冠假日酒店',people:280},
+{name:'江门名冠金凯悦酒店',people:321},
+{name:'江门富力万达嘉华酒店',people:290},
+{name:'江门丽宫国际酒店',people:392},
+{name:'江门新会龙泉度假酒店',people:228},
+{name:'江门新会碧桂园凤凰酒店',people:55},
+{name:'江门华保体育会展酒店（广东珠西国际会展中心店）',people:102},
+{name:'江门银晶国际酒店',people:187},
+{name:'江门蓬江华茵广场亚朵酒店',people:78},
+{name:'铂顿国际公寓江门蓬江行政服务中心店',people:52},
+{name:'维也纳酒店(江门万达广场店)',people:80},
+{name:'维也纳酒店(江门常安路步行街店)',people:68},
+{name:'江海碧桂园凤凰酒店（江门东站万达广场店）',people:166},
+{name:'江门江海智选假日酒店(江海广场店)',people:62},
+{name:'江门东站嘉华广场智选假日酒店',people:65},
+{name:'全季酒店（江门东站江海万达广场店）',people:92},
+{name:'绿岛假日酒店（江门万达广场华侨广场店）',people:156},
+{name:'江门合意酒店',people:30},
+{name:'江门珺璟麦客达温德姆酒店',people:35},
+{name:'希岸Deluxe酒店(江门外海大桥店)',people:150},
+{name:'江门奥普斯酒店（江门东站店）',people:97},
+{name:'柏丽泉智酒店（江门东站江海广场店）',people:59},
+{name:'江门三木里酒店（江海站白水带公园店）',people:16},
+{name:'曼陀伦Plus智能酒店(江门和兴广场五邑华侨广场店)',people:38},
+{name:'曼陀伦智能酒店(江门职业技术学院店)',people:29},
+{name:'丽枫酒店（迎宾大道店）',people:120},
+{name:'古镇利和威斯汀酒店',people:0},
+{name:'古镇利和希尔顿花园',people:0},
+{name:'圭峰大酒店',people:0},
+{name:'凯里亚德酒店',people:0}
+];state.hotels=raw.map((r,i)=>({name:r.name,line:String((i%12)+1),people:r.people}))}
+function renderHotels(){const tbody=document.querySelector('#hotelsTable tbody');tbody.innerHTML='';state.hotels.forEach((h,idx)=>{const tr=document.createElement('tr');const options=state.lines.map(l=>`<option value="${l.id}" ${String(h.line)==String(l.id)?'selected':''}>${l.name}</option>`).join('');const lineCell= state.editMapping ? `<select data-hidx="${idx}" data-hfield="line">${options}</select>` : `<div>${(state.lines.find(l=>l.id===String(h.line))||{}).name||('线路'+h.line)}</div>`;tr.innerHTML=`
+<td><input type="text" value="${h.name}" data-hidx="${idx}" data-hfield="name"></td>
+<td>${lineCell}</td>
+ <td><input type="number" min="0" value="${h.people}" data-hidx="${idx}" data-hfield="people"></td>
+ <td><button class="secondary" data-delete="${idx}">删除</button></td>`;tbody.appendChild(tr)});document.querySelectorAll('#hotelsTable [data-hfield]').forEach(el=>{el.addEventListener('input',()=>{const idx=Number(el.dataset.hidx);const field=el.dataset.hfield;let val=el.value;if(field==='people')val=Number(val)||0;state.hotels[idx][field]=val;if(field==='line'){const name=state.hotels[idx].name||('酒店'+(idx+1));state.hotelLineMap[name]=String(val);try{localStorage.setItem('hotelLineMap',JSON.stringify(state.hotelLineMap))}catch(e){} }})});document.querySelectorAll('#hotelsTable [data-delete]').forEach(btn=>{btn.addEventListener('click',()=>{const idx=Number(btn.dataset.delete);const name=state.hotels[idx]?.name;state.hotels.splice(idx,1);if(name){delete state.hotelLineMap[name];try{localStorage.setItem('hotelLineMap',JSON.stringify(state.hotelLineMap))}catch(e){}}renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()})})}
+function applySavedHotelMapping(){state.hotels.forEach((h,i)=>{const name=h.name||('酒店'+(i+1));const id=state.hotelLineMap[name];if(id){h.line=String(id)}})}
+function persistCurrentMapping(){const map={};state.hotels.forEach(h=>{if(h.name){map[h.name]=String(h.line||'')}});state.hotelLineMap=map;try{localStorage.setItem('hotelLineMap',JSON.stringify(map))}catch(e){}}
+function persistLines(){try{const data=state.lines.map(l=>({id:String(l.id),name:l.name,seats:l.seats,load:l.load,red:l.red,oneWay:l.oneWay,buffer:l.buffer,window:l.window}));localStorage.setItem('lines',JSON.stringify(data))}catch(e){}}
+function loadSavedLines(){try{const raw=JSON.parse(localStorage.getItem('lines')||'[]');if(Array.isArray(raw)&&raw.length){state.lines=raw.map(l=>({id:String(l.id),name:l.name||('线路'+l.id),people:0,adj:0,seats:Number(l.seats)||state.defaults.seats,load:Number(l.load)||state.defaults.load,red:Number(l.red)||state.defaults.red,oneWay:Number(l.oneWay)||state.defaults.oneWay,buffer:Number(l.buffer)||state.defaults.buffer,window:Number(l.window)||state.defaults.window,calc:{}}));state.lineNameToId={};state.lines.forEach(l=>{state.lineNameToId[l.name]=String(l.id)});return true} }catch(e){}return false}
+function nextLineId(){const ids=state.lines.map(l=>Number(l.id)||0);const id=Math.max(0,...ids)+1;return String(id)}
+function addLine(name){const id=nextLineId();const pure=(name||'').trim();const full=pure?('线路'+id+' '+pure):('线路'+id);state.lines.push({id,name:full,people:0,adj:0,seats:state.defaults.seats,load:state.defaults.load,red:state.defaults.red,oneWay:state.defaults.oneWay,buffer:state.defaults.buffer,window:state.defaults.window,calc:{}});state.lineNameToId[full]=id;if(pure)state.lineNameToId[pure]=id;persistLines();renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()}
+function hotelsToPeopleByLine(){const agg={};let total=0;const hotelSet=new Set();state.hotels.forEach(h=>{const line=String(h.line||'');const p=Number(h.people)||0;agg[line]=(agg[line]||0)+p;total+=p;hotelSet.add(h.name||'')});state.peopleByLine=agg;state.stats.baseTotal=total;state.stats.hotels=hotelSet.size}
+function detectSep(header){if(header.includes("\t"))return"\t";if(header.includes(";"))return";";return","}
+function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(!lines.length)return[];const sep=detectSep(lines[0]);return lines.map(l=>{const parts=l.split(sep).map(s=>s.trim());if(parts.length>=3){return{hotel:parts[0],line:parts[1],people:parseFloat(parts[2])||0}}else if(parts.length===2){return{hotel:parts[0],people:parseFloat(parts[1])||0}}else{return{hotel:parts[0],line:'',people:0}}})}
+function parseLinesCSV(text){const lines=text.trim().split(/\r?\n/);if(!lines.length)return[];const sep=detectSep(lines[0]);return lines.map(l=>{const parts=l.split(sep).map(s=>s.trim());return{hotel:parts[0],lineName:parts[1]||''}})}
+function ensureLineIdByName(name){if(!name) return String(1);const n=name.trim();if(state.lineNameToId[n])return state.lineNameToId[n];const unused=state.lines.find(l=>!Object.values(state.lineNameToId).includes(l.id));const id=unused?unused.id:String(1);state.lineNameToId[n]=id;const line=state.lines.find(l=>l.id===id);if(line)line.name=n;return id}
+function normalizeName(s){return String(canonicalizeName(s)||'')
+  .replace(/[（）()]/g,'')
+  .replace(/\s+/g,'')
+  .replace(/[，、,;\-]/g,'')
+  .replace(/江门|江海|新会|古镇|东站|万达|广场|行政服务中心|华侨|外海大桥|职业技术学院/g,'')
+  .replace(/酒店|公寓/g,'')
+  .toLowerCase()}
+function findHotelByName(target){const t=normalizeName(target);let idx=state.hotels.findIndex(h=>normalizeName(h.name)===t);if(idx>=0)return idx;idx=state.hotels.findIndex(h=>normalizeName(h.name).includes(t)||t.includes(normalizeName(h.name)));return idx}
+function canonicalizeName(s){let x=String(s||'');x=x.replace('凯莉亚德','凯里亚德');return x}
+function loadUserLineDefs(){const defs=[
+{id:'1',name:'滨江线',runTime:25,hotels:['保利皇冠假日酒店','华保体育会展酒店']},
+{id:'2',name:'潮连线',runTime:20,hotels:['珺璟麦客达温德姆酒店','曼陀伦智能酒店(潮连店)']},
+{id:'3',name:'江侨线',runTime:25,hotels:['铂顿国际公寓','亚朵酒店','绿岛假日酒店']},
+{id:'4',name:'华侨广场线',runTime:12,hotels:['万达嘉华酒店','维也纳酒店(万达店)']},
+{id:'5',name:'名冠金凯悦酒店',runTime:12,hotels:['名冠金凯悦酒店']},
+{id:'6',name:'迎宾线',runTime:20,hotels:['丽枫酒店(迎宾店)','曼陀伦Plus酒店(和兴店)','丽宫国际酒店']},
+{id:'7',name:'侨都线',runTime:17,hotels:['银晶酒店','维也纳酒店(常安路店)']},
+{id:'8',name:'江海线',runTime:25,hotels:['江海智选假日酒店','柏丽泉智酒店','嘉华广场智选假日酒店','奥普斯公寓','凯莉亚德酒店']},
+{id:'9',name:'高新区线',runTime:17,hotels:['全季酒店(江海万达广场店)','合意酒店(江海万达广场)']},
+{id:'10',name:'外海线',runTime:23,hotels:['三木里酒店','希岸Deluxe酒店']},
+{id:'11',name:'新会线（碧桂园凤悦凤凰酒店）',runTime:26,hotels:['碧桂园凤悦凤凰酒店']},
+{id:'12',name:'新会龙泉酒店',runTime:22,hotels:['新会龙泉酒店']}
+];defs.forEach(d=>{let line=state.lines.find(x=>x.id===String(d.id));if(!line){line={id:String(d.id),name:'线路'+d.id+' '+(d.name||('线路'+d.id)),people:0,adj:0,seats:state.defaults.seats,load:state.defaults.load,red:state.defaults.red,oneWay:state.defaults.oneWay,buffer:state.defaults.buffer,window:state.defaults.window,runTime:Number(d.runTime)||0,calc:{}};state.lines.push(line)}else{line.name='线路'+d.id+' '+(d.name||line.name);line.runTime=Number(d.runTime)||line.runTime||0}state.lineNameToId[line.name]=String(d.id);d.hotels.forEach(hn=>{const i=findHotelByName(hn);if(i>=0){state.hotels[i].line=String(d.id)}else{state.hotels.push({name:hn,line:String(d.id),people:0})}})});persistLines()}
+function ensureDefaultRunTimes(){const map={'1':25,'2':20,'3':25,'4':12,'5':12,'6':20,'7':17,'8':25,'9':17,'10':23,'11':26,'12':22};state.lines.forEach(l=>{const id=String(l.id);if((Number(l.runTime)||0)===0&&map[id]!==undefined){l.runTime=map[id]}});persistLines()}
+function parseLineDefCSV(text){const lines=text.trim().split(/\r?\n/);if(!lines.length)return[];const sep=detectSep(lines[0]);return lines.map(l=>{const parts=l.split(sep).map(s=>s.trim());const id=(parts[0]||'').replace(/[^0-9]/g,'');const name=parts[1]||'';const rtMatch=(parts[2]||'').match(/(\d+)\s*分/);const runTime=rtMatch?Number(rtMatch[1]):0;const hotelsStr=parts[3]!==undefined?parts[3]:parts[2]||'';const hotels=hotelsStr.split(/[、，,;\|]/).map(s=>s.trim()).filter(Boolean);return{id:String(id||''),name,runTime,hotels}})}
+function applyLineDefs(defs){defs.forEach(d=>{if(!d.id) return;let line=state.lines.find(x=>x.id===String(d.id));if(!line){line={id:String(d.id),name:d.name||('线路'+d.id),people:0,adj:0,seats:state.defaults.seats,load:state.defaults.load,red:state.defaults.red,oneWay:state.defaults.oneWay,buffer:state.defaults.buffer,window:state.defaults.window,runTime:Number(d.runTime)||0,calc:{}};state.lines.push(line)}else{line.name=d.name||line.name;line.runTime=Number(d.runTime)||line.runTime||0}if(d.name)state.lineNameToId[d.name]=String(d.id);d.hotels.forEach(hn=>{let h=state.hotels.find(z=>z.name===hn);if(!h){h={name:hn,line:String(d.id),people:0};state.hotels.push(h)}else{h.line=String(d.id)}})});persistLines()}
+function aggregatePeople(rows){const agg={};let baseTotal=0;const hotelSet=new Set();rows.forEach(r=>{const k=String(r.line||"");const v=isNaN(r.people)?0:r.people;baseTotal+=v;hotelSet.add(r.hotel||"");agg[k]=(agg[k]||0)+v});state.peopleByLine=agg;state.stats.hotels=hotelSet.size;state.stats.baseTotal=baseTotal}
+function applyDelta(v){return Math.max(0,Math.round(v*(1+state.delta/100)))}
+function fillTable(){const tbody=document.querySelector('#linesTable tbody');tbody.innerHTML='';let totalPeople=0,totalDemand=0,totalTrips=0,totalVehicles=0;state.lines.forEach((ln,idx)=>{const base=state.peopleByLine[ln.id]||0;const people=applyDelta(base+(ln.adj||0));ln.people=people;ln.seats=Number(ln.seats)||state.defaults.seats;ln.load=Number(ln.load)||state.defaults.load;ln.red=Number(ln.red)||state.defaults.red;ln.oneWay=Number(ln.oneWay)||state.defaults.oneWay;ln.buffer=Number(ln.buffer)||state.defaults.buffer;ln.window=Number(ln.window)||state.defaults.window;const perTrip=ln.seats*ln.load;let turn=Number(ln.runTime)||0;if(!turn||turn<=0){turn=Math.max(0,(Number(ln.oneWay)||0)*2+(Number(ln.buffer)||0))}let tripsPer=0;const needWithRed=Math.ceil(people*(1+ln.red));let vehicles=0;let trips=0;if(turn>0){tripsPer=Math.max(1,Math.floor(ln.window/Math.max(1,turn)));vehicles=Math.ceil(needWithRed/Math.max(1,perTrip*tripsPer));trips=Math.ceil(needWithRed/Math.max(1,perTrip))}ln.calc={perTrip,turn,tripsPer,needWithRed,vehicles,trips};totalPeople+=people;totalDemand+=needWithRed;totalTrips+=trips;totalVehicles+=vehicles;const tr=document.createElement('tr');tr.innerHTML=
+`<td><span class="badge">${ln.name||('线路'+ln.id)}</span></td>`+
+`<td><div><strong>${people}</strong></div><div class="tiny muted">基数：${Math.max(0,Math.round(base))} | 全局：${state.delta}%</div></td>`+
+`<td><input type="number" value="${ln.adj||0}" step="1" data-field="adj" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.seats}" min="1" data-field="seats" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.load}" step="0.01" min="0" max="1" data-field="load" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.red}" step="0.01" min="0" max="1" data-field="red" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.oneWay}" min="1" data-field="oneWay" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.buffer}" min="0" data-field="buffer" data-idx="${idx}"></td>`+
+`<td><input type="number" value="${ln.window}" min="1" data-field="window" data-idx="${idx}"></td>`+
+`<td>${perTrip.toFixed(2)}</td>`+
+`<td>${turn||0}</td>`+
+`<td><span class="badge ${tripsPer<1?'warn':'ok'}">${tripsPer}</span></td>`+
+`<td>${needWithRed}</td>`+
+`<td><strong>${vehicles}</strong></td>`+
+`<td>${trips}</td>`;tbody.appendChild(tr)});document.getElementById('totalPeople').textContent=String(totalPeople);document.getElementById('totalRedund').textContent=String(totalDemand);document.getElementById('totalVehicles').textContent=String(totalVehicles);document.getElementById('totalTrips').textContent=String(totalTrips);document.getElementById('statHotels').textContent=String(state.stats.hotels||0);document.getElementById('statBase').textContent=String(state.stats.baseTotal||0);bindTableInputs();drawChart()}
+function bindTableInputs(){document.querySelectorAll('#linesTable tbody input').forEach(inp=>{inp.addEventListener('input',()=>{const idx=Number(inp.dataset.idx);const field=inp.dataset.field;let val=Number(inp.value);if(['load','red'].includes(field))val=Math.min(1,Math.max(0,val));if(['seats','oneWay','buffer','window','adj'].includes(field))val=Math.max(0,val);state.lines[idx][field]=val;fillTable()})})}
+function drawChart(){const canvas=document.getElementById('chart');const tip=document.getElementById('chartTip');const ctx=canvas.getContext('2d');const dpr=window.devicePixelRatio||1;const W=canvas.clientWidth;const labels=state.lines.map(l=>l.name||('线路'+l.id));const values=state.lines.map(l=>l.calc.vehicles||0);const peopleVals=state.lines.map(l=>l.people||0);const max=Math.max(1,...values);const LM=140,RM=36,TM=32,BM=32;const barH=36,gap=20;const H=Math.max(380,TM+BM+labels.length*(barH+gap));canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);ctx.strokeStyle='#e9e9ee';ctx.beginPath();ctx.moveTo(LM,TM);ctx.lineTo(LM,H-BM);ctx.lineTo(W-RM,H-BM);ctx.stroke();const palette=['#2f6feb','#ff6b6b','#f7b32b','#6bcb77','#4d96ff','#845EC2','#00C9A7','#FFC75F','#F9F871','#D65DB1','#0081CF','#C34A36'];const formatLabel=(lab)=>{const m=String(lab).split(/\s+/);const main=m[0]||lab;const sub=m.slice(1).join(' ');const ell=(s,maxLen=8)=>s.length>maxLen?s.slice(0,maxLen)+'…':s;return {main,sub:ell(sub,10)}};const bars=[];ctx.textAlign='left';for(let i=0;i<labels.length;i++){const v=values[i];const y=TM+i*(barH+gap);let w=Math.round((W-LM-RM)*v/max);if(w<=3)w=3;const color=palette[i%palette.length];ctx.fillStyle=color;ctx.fillRect(LM,y,w,barH);if(state.chartSel===i){ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.strokeRect(LM-1,y-1,w+2,barH+2)}const {main,sub}=formatLabel(labels[i]);ctx.fillStyle='#111';ctx.font='600 14px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial';ctx.textBaseline='middle';ctx.fillText(main,10,y+barH/2-10);if(sub){ctx.fillStyle='#666';ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial';ctx.fillText(sub,10,y+barH/2+10)}ctx.fillStyle='#111';ctx.font='13px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial';ctx.textAlign='left';ctx.fillText(String(v),LM+w+12,y+barH/2);bars.push({x:LM,y:y,w:w,h:barH,label:labels[i],value:v,people:peopleVals[i],idx:i})}const showTip=(b,px,py)=>{tip.style.display='block';tip.textContent=b.label+'：'+b.value+'台（人数'+b.people+'）';tip.style.left=(px+14)+'px';tip.style.top=(py+14)+'px'};canvas.onmousemove=(e)=>{const r=canvas.getBoundingClientRect();const x=e.clientX-r.left;const y=e.clientY-r.top;const b=bars.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);if(b){showTip(b,x,y)}else{if(state.chartSel>=0){const sel=bars.find(k=>k.idx===state.chartSel);if(sel)showTip(sel,LM+sel.w,sel.y+sel.h/2);else tip.style.display='none'}else tip.style.display='none'}};canvas.onclick=(e)=>{const r=canvas.getBoundingClientRect();const x=e.clientX-r.left;const y=e.clientY-r.top;const b=bars.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);if(b){state.chartSel=b.idx;showTip(b,x,y);drawChart()}else{state.chartSel=-1;tip.style.display='none'}}
+function renderConclusion(){const list=state.lines.map(l=>`${l.name||('线路'+l.id)}: ${l.calc.vehicles||0}台`).join('，');const total=state.lines.reduce((s,l)=>s+(l.calc.vehicles||0),0);const linesCount=state.lines.length;const idsNow=new Set(state.lines.map(l=>String(l.id)));let extra=`（当前线路数${linesCount}条）`;if(state.lastSummary){const dv=total-(state.lastSummary.vehiclesTotal||0);const dl=linesCount-(state.lastSummary.linesCount||0);const added=[...idsNow].filter(id=>!(state.lastSummary.lineIds||new Set()).has(id)).map(id=>{const ln=state.lines.find(x=>String(x.id)===String(id));return ln?ln.name:('线路'+id)});const removed=[...(state.lastSummary.lineIds||new Set())].filter(id=>!idsNow.has(id));const removedNames=removed.map(id=>state.lastSummary.lineNamesById&&state.lastSummary.lineNamesById[id]?state.lastSummary.lineNamesById[id]:('线路'+id));const parts=[];if(dv!==0)parts.push(`车辆变动${dv>0?('+'+dv):dv}台`);if(dl!==0)parts.push(`线路变动${dl>0?('+'+dl):dl}`);if(added.length)parts.push(`新增线路：${added.join('、')}`);if(removedNames.length)parts.push(`删除线路：${removedNames.join('、')}`);if(parts.length)extra+='（'+parts.join('；')+'）'}const text=`推荐车辆合计${total}台${extra}；${list}`;let div=document.getElementById('conclusion');if(!div){div=document.createElement('div');div.className='card';div.id='conclusion';const h=document.createElement('h2');h.textContent='结论';const t=document.createElement('div');t.id='conclusionText';t.className='muted';div.appendChild(h);div.appendChild(t);document.body.appendChild(div)}document.getElementById('conclusionText').textContent=text;state.lastSummary={vehiclesTotal:total,linesCount:linesCount,lineIds:idsNow,lineNamesById:(()=>{const m={};state.lines.forEach(l=>{m[String(l.id)]=l.name||('线路'+l.id)});return m})()}}
+function renderSimpleResult(){const tbody=document.querySelector('#simpleResult tbody');if(!tbody)return;tbody.innerHTML='';state.lines.forEach((l,i)=>{const rt=(Number(l.runTime)||0)||(((Number(l.oneWay)||0)*2+(Number(l.buffer)||0))||0);const tr=document.createElement('tr');tr.innerHTML=`<td>${l.name||('线路'+l.id)}</td><td>${l.people||0}</td><td><input type="number" min="0" value="${rt}" data-lineidx="${i}" data-linefield="runTime"></td><td><strong>${l.calc.vehicles||0}</strong></td>`;tbody.appendChild(tr)});document.querySelectorAll('#simpleResult [data-linefield="runTime"]').forEach(inp=>{inp.addEventListener('input',()=>{const idx=Number(inp.dataset.lineidx);const v=Math.max(0,Number(inp.value)||0);state.lines[idx].runTime=v;persistLines();fillTable();renderConclusion();renderSimpleResult()})})}
+function toCSV(){const header=['线路编号','线路名称','人数','座位数','上座率','冗余','单程','缓冲','时间窗','每趟承载','周转','每车趟次','需求含冗余','需车辆数','需总趟次'];const rows=state.lines.map(l=>[l.id,l.name||('线路'+l.id),l.people,l.seats,l.load,l.red,l.oneWay,l.buffer,l.window,l.calc.perTrip.toFixed(2),l.calc.turn,l.calc.tripsPer,l.calc.needWithRed,l.calc.vehicles,l.calc.trips]);return [header.join(',') ,...rows.map(r=>r.join(','))].join('\n')}
+function download(name,content){const blob=new Blob([content],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},0)}
+function exportPDF(){const chart=document.getElementById('chart');const imgURL=chart.toDataURL('image/png');const totalPeople=document.getElementById('totalPeople').textContent||'0';const totalVehicles=document.getElementById('totalVehicles').textContent||'0';const totalTrips=document.getElementById('totalTrips').textContent||'0';const conclusion=document.getElementById('conclusionText')?document.getElementById('conclusionText').textContent:'';const rows=state.lines.map(l=>`<tr><td>${l.name||('线路'+l.id)}</td><td>${l.people||0}</td><td>${Number(l.runTime)||0}</td><td>${l.calc.vehicles||0}</td></tr>`).join('');const now=new Date();const reportHTML=`<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>大会运力测算报告</title><style>@page{size:A4 landscape;margin:16mm}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.5;color:#111;margin:0;padding:20px}h1{font-size:20px;margin:0 0 8px}h2{font-size:16px;margin:12px 0 6px}.kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kpi .item{border:1px solid #e6e6eb;border-radius:8px;padding:8px;text-align:center}.item .v{font-weight:600;font-size:18px}.item .t{font-size:12px;color:#666}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #eee;padding:6px;text-align:center}th{background:#fafafa}</style></head><body><h1>大会运力测算报告</h1><div style=\"font-size:12px;color:#666\">生成时间：${now.toLocaleString()}</div><h2>汇总</h2><div class=\"kpi\"><div class=\"item\"><div class=\"v\">${totalPeople}</div><div class=\"t\">总人数</div></div><div class=\"item\"><div class=\"v\">${totalVehicles}</div><div class=\"t\">最少车辆数</div></div><div class=\"item\"><div class=\"v\">${totalTrips}</div><div class=\"t\">总趟次</div></div></div><h2>结论</h2><div style=\"font-size:12px;color:#333\">${conclusion||''}</div><h2>可视化</h2><img src=\"${imgURL}\" style=\"width:100%\"><h2>结果（简洁）</h2><table><thead><tr><th>线路名称</th><th>人数</th><th>运行时间(分)</th><th>需车辆数</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;const w=window.open('','_blank');w.document.open();w.document.write(reportHTML);w.document.close();setTimeout(()=>{w.focus();w.print()},500)}
+document.getElementById('downloadCSV').addEventListener('click',()=>{download('运力结果.csv',toCSV())});
+document.getElementById('exportPDF').addEventListener('click',()=>{exportPDF()});
+document.getElementById('downloadTemplate').addEventListener('click',()=>{download('酒店详情模板.csv','酒店名,线路编号,人数\n酒店A,1,120\n酒店B,2,80')});
+document.getElementById('delta').addEventListener('input',e=>{state.delta=Number(e.target.value)||0;document.getElementById('deltaLabel').textContent=`${state.delta}%`;fillTable()});
+document.getElementById('calcBtn').addEventListener('click',()=>fillTable());
+document.getElementById('fillDefaults').addEventListener('click',()=>{state.lines.forEach(l=>{l.seats=Number(document.getElementById('pSeats').value)||state.defaults.seats;l.load=Number(document.getElementById('pLoad').value)||state.defaults.load;l.red=Number(document.getElementById('pRedund').value)||state.defaults.red;l.oneWay=Number(document.getElementById('pOneWay').value)||state.defaults.oneWay;l.buffer=Number(document.getElementById('pBuffer').value)||state.defaults.buffer;l.window=Number(document.getElementById('pWindow').value)||state.defaults.window;l.runTime=Math.max(0,(Number(l.oneWay)||0)*2+(Number(l.buffer)||0))});persistLines();fillTable()});
+document.getElementById('parseBtn').addEventListener('click',()=>{const ta=document.getElementById('pasteArea').value.trim();const handleRows=(rows)=>{state.hotels=rows.map((r,i)=>{const name=r.hotel||('酒店'+(i+1));let line=r.line;if(!line){line=state.hotelLineMap[name]||String(((i)%12)+1)}return{name, line:String(line||'1'), people:Number(r.people)||0}});rows.forEach(r=>{if(r.hotel&&r.line){state.hotelLineMap[r.hotel]=String(r.line)}});try{localStorage.setItem('hotelLineMap',JSON.stringify(state.hotelLineMap))}catch(e){};renderHotels();hotelsToPeopleByLine();fillTable()};if(ta){const rows=parseCSV(ta);handleRows(rows);return}const f=document.getElementById('fileInput').files[0];if(!f){fillTable();return}const reader=new FileReader();reader.onload=e=>{const text=e.target.result||'';const rows=parseCSV(text);handleRows(rows)};reader.readAsText(f,'utf-8')});
+document.getElementById('resetBtn').addEventListener('click',()=>{document.getElementById('pasteArea').value='';document.getElementById('fileInput').value='';state.peopleByLine={};state.delta=0;document.getElementById('delta').value='0';document.getElementById('deltaLabel').textContent='0%';state.lines.forEach(l=>l.adj=0);fillTable()});
+document.getElementById('resetAdj').addEventListener('click',()=>{state.lines.forEach(l=>l.adj=0);fillTable()});
+function syncDefaults(){state.defaults.seats=Number(document.getElementById('pSeats').value)||state.defaults.seats;state.defaults.load=Number(document.getElementById('pLoad').value)||state.defaults.load;state.defaults.red=Number(document.getElementById('pRedund').value)||state.defaults.red;state.defaults.oneWay=Number(document.getElementById('pOneWay').value)||state.defaults.oneWay;state.defaults.buffer=Number(document.getElementById('pBuffer').value)||state.defaults.buffer;state.defaults.window=Number(document.getElementById('pWindow').value)||state.defaults.window}
+['pSeats','pLoad','pRedund','pOneWay','pBuffer','pWindow'].forEach(id=>{document.getElementById(id).addEventListener('input',()=>{syncDefaults();fillTable()})});
+document.getElementById('computeSimple').addEventListener('click',()=>{hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()});
+document.getElementById('clearHotelPeople').addEventListener('click',()=>{state.hotels.forEach(h=>h.people=0);renderHotels();hotelsToPeopleByLine();fillTable()});
+document.getElementById('toggleAdvanced').addEventListener('click',()=>{const el=document.getElementById('advancedConfig');const show=el.style.display==='none';el.style.display=show?'grid':'none';document.getElementById('toggleAdvanced').textContent=show?'隐藏高级设置':'显示高级设置'});
+document.getElementById('toggleMapping').addEventListener('click',()=>{state.editMapping=!state.editMapping;document.getElementById('toggleMapping').textContent=state.editMapping?'完成线路映射':'编辑线路映射';renderHotels()});
+document.getElementById('fillSampleData').addEventListener('click',()=>{state.lines.forEach((l,i)=>{l.name='线路'+(i+1)});const sample=[
+  ['酒店A','线路1',120],['酒店B','线路1',80],['酒店C','线路2',90],['酒店D','线路3',110],['酒店E','线路4',70],
+  ['酒店F','线路5',95],['酒店G','线路6',60],['酒店H','线路7',88],['酒店I','线路8',76],['酒店J','线路9',140],
+  ['酒店K','线路10',65],['酒店L','线路11',100],['酒店M','线路12',105],['酒店N','线路1',60],['酒店O','线路2',75],
+  ['酒店P','线路3',80],['酒店Q','线路4',90],['酒店R','线路5',85],['酒店S','线路6',55],['酒店T','线路7',68]
+];state.hotels=sample.map(([name,lineName,p])=>{const id=ensureLineIdByName(lineName);return{name, line:id, people:p}});renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()});
+document.getElementById('mergeImport').addEventListener('click',()=>{
+  const fh=document.getElementById('fileHotel').files[0];
+  const fl=document.getElementById('fileLine').files[0];
+  const fld=document.getElementById('fileLineDef').files[0];
+  const readFile=(f)=>new Promise(res=>{if(!f)return res('');const r=new FileReader();r.onload=e=>res(e.target.result||'');r.readAsText(f,'utf-8')});
+  Promise.all([readFile(fh),readFile(fl),readFile(fld)]).then(([hotelsText,linesText,lineDefsText])=>{
+    const hotelRows=hotelsText?parseCSV(hotelsText):[];
+    const lineRows=linesText?parseLinesCSV(linesText):[];
+    const lineDefs=lineDefsText?parseLineDefCSV(lineDefsText):[]; if(lineDefs.length){applyLineDefs(lineDefs)}
+    const hotelToLineName={};
+    lineRows.forEach(m=>{if(m.hotel){hotelToLineName[m.hotel]=m.lineName||''}});
+    state.hotels=hotelRows.map((r,i)=>{
+      const name=r.hotel||('酒店'+(i+1));
+      const p=Number(r.people)||0;
+      let lineId=String(r.line||'');
+      if(!lineId){const ln=hotelToLineName[name];if(ln){lineId=ensureLineIdByName(ln)} else {lineId=state.hotelLineMap[name]||String(((i)%12)+1)}}
+      return {name, line:String(lineId||'1'), people:p}
+    });
+    persistCurrentMapping();
+    renderHotels(); hotelsToPeopleByLine(); fillTable(); renderConclusion();
+  })
+});
+document.getElementById('importLineDefs').addEventListener('click',()=>{const f=document.getElementById('fileLineDef').files[0];if(!f)return;const r=new FileReader();r.onload=e=>{const t=e.target.result||'';const defs=parseLineDefCSV(t);applyLineDefs(defs);persistLines();renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()};r.readAsText(f,'utf-8')});
+document.getElementById('saveMapping').addEventListener('click',()=>{persistCurrentMapping()});
+document.getElementById('exportMapping').addEventListener('click',()=>{const rows=state.hotels.map(h=>[h.name||'',String(h.line||'')]);const csv=['酒店名,线路编号',...rows.map(r=>r.join(','))].join('\n');download('线路酒店映射.csv',csv)});
+document.getElementById('addHotel').addEventListener('click',()=>{const idx=state.hotels.length;const line=String((idx%state.lines.length)+1);state.hotels.push({name:'新酒店'+(idx+1),line,people:0});renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()});
+document.getElementById('dedupHotels').addEventListener('click',()=>{const seen={};const result=[];state.hotels.forEach(h=>{const key=normalizeName(h.name);if(!key){result.push(h);return}if(!seen[key]){seen[key]={name:h.name,line:String(h.line||'1'),people:Number(h.people)||0}}else{seen[key].people+=Number(h.people)||0}});for(const k in seen){result.push(seen[k])}state.hotels=result;persistCurrentMapping();renderHotels();hotelsToPeopleByLine();fillTable();renderConclusion();renderSimpleResult()});
+document.getElementById('addLine').addEventListener('click',()=>{const name=(document.getElementById('newLineName').value||'').trim();addLine(name);document.getElementById('newLineName').value=''});
+document.getElementById('runTests').addEventListener('click',()=>{runSelfTests()});
+function runSelfTests(){const cases=[];const push=(name,ok,detail)=>{cases.push({name,ok,detail})};try{hotelsToPeopleByLine();fillTable();const linesCount=state.lines.length;push('初始化线路数量',linesCount>=12,`当前${linesCount}`);const hotelCount=state.stats.hotels||0;push('初始化酒店数量',hotelCount>=30,`当前${hotelCount}`);const totalPeopleUI=Number(document.getElementById('totalPeople').textContent||'0');push('人数汇总一致',totalPeopleUI===state.stats.baseTotal,`UI=${totalPeopleUI},计算=${state.stats.baseTotal}`);const hasRunTimes=state.lines.slice(0,12).every(l=>Number(l.runTime)||(((Number(l.oneWay)||0)*2+(Number(l.buffer)||0))>0));push('前12线路运行时间有效',hasRunTimes,'');const l0=state.lines[0];const perTrip=l0.seats*l0.load;const tripsPer=Math.max(1,Math.floor(l0.window/Math.max(1,Number(l0.runTime)||((l0.oneWay*2+l0.buffer)||0))));const needWithRed=Math.ceil(l0.people*(1+l0.red));const vehicles=Math.ceil(needWithRed/Math.max(1,perTrip*tripsPer));push('车辆公式校验',vehicles===l0.calc.vehicles,`期望=${vehicles},实际=${l0.calc.vehicles}`);const prev=JSON.parse(localStorage.getItem('lines')||'[]');addLine('测试线');const now=JSON.parse(localStorage.getItem('lines')||'[]');push('新增线路持久化',now.length===prev.length+1,`保存前=${prev.length},保存后=${now.length}`);fillTable();renderConclusion();const linesCountAfter=state.lines.length;push('新增线路计入结果',linesCountAfter===linesCount+1,`新增后=${linesCountAfter}`);const testIdx=state.lines.findIndex(l=>l.name.includes('测试线'));if(testIdx>=0){state.lines[testIdx].runTime=0;state.lines[testIdx].oneWay=10;state.lines[testIdx].buffer=5;fillTable();const turn=state.lines[testIdx].calc.turn;push('运行时间回退到单程+缓冲',turn===25,`turn=${turn}`)} }catch(e){push('运行异常',false,String(e&&e.message||e))}const tbody=document.querySelector('#testReport tbody');tbody.innerHTML='';let pass=0;cases.forEach(c=>{if(c.ok)pass++;const tr=document.createElement('tr');tr.innerHTML=`<td>${c.name}</td><td>${c.ok?'通过':'失败'}</td><td class="tiny">${c.detail||''}</td>`;tbody.appendChild(tr)});const w=document.getElementById('testSummary');w.textContent=`共${cases.length}项，通过${pass}项`;document.getElementById('testReportWrap').hidden=false}
+try{state.hotelLineMap=JSON.parse(localStorage.getItem('hotelLineMap')||'{}')}catch(e){state.hotelLineMap={}};if(!loadSavedLines()){initLines(12);loadUserLineDefs()}ensureDefaultRunTimes();loadPresetHotels();applySavedHotelMapping();hotelsToPeopleByLine();renderHotels();fillTable();renderConclusion();renderSimpleResult();
+</script>
+</body>
+</html>
+
