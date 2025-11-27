@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>运行时间优先级与计算关系</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;margin:0;padding:20px;background:#f7f7f9;color:#222}
+h1{font-size:20px;margin:0 0 12px}
+.card{background:#fff;border:1px solid #e6e6eb;border-radius:10px;padding:14px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+label{display:block;margin:6px 0 4px;font-size:13px;color:#444}
+input[type="number"],input[type="text"]{width:100%;box-sizing:border-box;padding:8px;border:1px solid #d0d0d6;border-radius:8px;font-size:14px}
+.item{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;text-align:center}
+.item .v{font-size:18px;font-weight:600}
+.muted{color:#666;font-size:12px}
+button{padding:10px 14px;border:1px solid #2f6feb;background:#2f6feb;color:#fff;border-radius:8px;font-size:14px;cursor:pointer}
+.footer{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<h1>运行时间优先级与计算关系</h1>
+
+<div class="card">
+  <div class="muted">优先级：分线路的<strong>运行时间(分)</strong>优先级更高；当其为 0 或空时，回退为<strong>单程×2 + 缓冲</strong>。</div>
+  <div class="muted" style="margin-top:6px">影响链路：运行时间 → 周转 → 每车趟次 → 需车辆数；每趟有效承载为<strong>座位数×上座率</strong>。</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>输入参数</h2>
+    <label>座位数</label>
+    <input type="number" id="seats" value="45" min="1">
+    <label>上座率</label>
+    <input type="number" id="load" value="0.85" step="0.01" min="0" max="1">
+    <label>安全冗余比例</label>
+    <input type="number" id="red" value="0.10" step="0.01" min="0" max="1">
+    <label>时间窗(分钟)</label>
+    <input type="number" id="window" value="120" min="1">
+    <label>单程车程(分钟)</label>
+    <input type="number" id="oneWay" value="30" min="0">
+    <label>停靠缓冲(分钟)</label>
+    <input type="number" id="buffer" value="10" min="0">
+    <label>运行时间(分，分线路可填)</label>
+    <input type="number" id="runTime" value="0" min="0">
+    <label>人数</label>
+    <input type="number" id="people" value="300" min="0">
+    <div class="footer"><button id="calc">计算</button></div>
+  </div>
+  <div class="card">
+    <h2>计算结果</h2>
+    <div class="item"><div class="v" id="turn">0</div><div class="muted">生效周转时间(分钟)</div></div>
+    <div class="item" style="margin-top:8px"><div class="v" id="perTrip">0</div><div class="muted">每趟有效承载</div></div>
+    <div class="item" style="margin-top:8px"><div class="v" id="tripsPer">0</div><div class="muted">每车趟次</div></div>
+    <div class="item" style="margin-top:8px"><div class="v" id="needWithRed">0</div><div class="muted">需求含冗余</div></div>
+    <div class="item" style="margin-top:8px"><div class="v" id="vehicles">0</div><div class="muted">需车辆数</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>与主页面的对应关系</h2>
+  <div class="muted">主页面分线路计算使用同一规则：当分线路运行时间&gt;0时直接作为周转；否则取<strong>单程×2 + 缓冲</strong>。统一参数的“填充到分线路”会把该回退值写入各线路的运行时间，之后仍可在结果表逐条覆盖。</div>
+</div>
+
+<script>
+function calc(){
+  const seats = Math.max(1, Number(document.getElementById('seats').value) || 1);
+  const load = Math.min(1, Math.max(0, Number(document.getElementById('load').value) || 0));
+  const red = Math.min(1, Math.max(0, Number(document.getElementById('red').value) || 0));
+  const windowV = Math.max(1, Number(document.getElementById('window').value) || 1);
+  const oneWay = Math.max(0, Number(document.getElementById('oneWay').value) || 0);
+  const buffer = Math.max(0, Number(document.getElementById('buffer').value) || 0);
+  const runTime = Math.max(0, Number(document.getElementById('runTime').value) || 0);
+  const people = Math.max(0, Number(document.getElementById('people').value) || 0);
+
+  const perTrip = seats * load;
+  let turn = runTime;
+  if (!turn || turn <= 0) {
+    turn = Math.max(0, oneWay * 2 + buffer);
+  }
+  const needWithRed = Math.ceil(people * (1 + red));
+  let tripsPer = 0;
+  let vehicles = 0;
+  if (turn > 0) {
+    tripsPer = Math.max(1, Math.floor(windowV / Math.max(1, turn)));
+    vehicles = Math.ceil(needWithRed / Math.max(1, perTrip * tripsPer));
+  }
+
+  document.getElementById('turn').textContent = String(turn);
+  document.getElementById('perTrip').textContent = perTrip.toFixed(2);
+  document.getElementById('tripsPer').textContent = String(tripsPer);
+  document.getElementById('needWithRed').textContent = String(needWithRed);
+  document.getElementById('vehicles').textContent = String(vehicles);
+}
+
+document.getElementById('calc').addEventListener('click', calc);
+['seats','load','red','window','oneWay','buffer','runTime','people'].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener('input', calc);
+});
+calc();
+</script>
+</body>
+</html>
+
